@@ -1,8 +1,6 @@
---!strict
--- DataService
--- Server-authoritative player data with a session lock (stops the two-server
--- dupe), retry + backoff on DataStore calls, autosave, a guaranteed save when
--- a player leaves, and template migrations so updates never wipe old saves.
+-- player data. has a session lock so you cant load the same profile on two
+-- servers and dupe stuff. retries if datastore is slow, autosaves, saves on
+-- leave, and patches old saves up to the template so an update doesnt wipe ppl
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -11,26 +9,24 @@ local store = DataStoreService:GetDataStore("PlayerData_v1")
 
 local DataService = {}
 
--- New players start from this. Adding a key here and shipping an update will
--- backfill it onto everyone's existing save through migrate().
 local TEMPLATE = {
 	Coins = 0,
 	Inventory = {},
 	Version = 1,
 }
 
-local SESSION_TTL = 60 -- a lock older than this is treated as dead (server crash)
+local SESSION_TTL = 60 -- lock older than this = dead server, take it over
 local AUTOSAVE_INTERVAL = 120
 local MAX_RETRIES = 5
 
 local jobId = game.JobId
-local cache: { [number]: any } = {}
+local cache = {}
 
-local function keyFor(userId: number): string
+local function keyFor(userId)
 	return "Player_" .. userId
 end
 
-local function deepCopy(t: any): any
+local function deepCopy(t)
 	local copy = {}
 	for k, v in t do
 		copy[k] = if typeof(v) == "table" then deepCopy(v) else v
@@ -38,9 +34,7 @@ local function deepCopy(t: any): any
 	return copy
 end
 
--- Run a DataStore call, retrying with exponential backoff. Throws if it never
--- succeeds so the caller can decide what to do (we kick on a failed load).
-local function retry(fn: () -> any): any
+local function retry(fn)
 	local attempt = 0
 	while true do
 		local ok, result = pcall(fn)
@@ -51,13 +45,13 @@ local function retry(fn: () -> any): any
 		if attempt >= MAX_RETRIES then
 			error(result)
 		end
-		task.wait(2 ^ attempt * 0.1)
+		task.wait(2 ^ attempt * 0.1) -- backoff
 	end
 end
 
--- Fill in any keys the save is missing from the template. Cheap forward
--- migration that keeps old saves valid after an update.
-local function migrate(data: any): any
+-- fill in anything the save is missing from the template. cheap way to add new
+-- fields in an update without breaking everyones existing data
+local function migrate(data)
 	for k, v in TEMPLATE do
 		if data[k] == nil then
 			data[k] = if typeof(v) == "table" then deepCopy(v) else v
@@ -66,18 +60,15 @@ local function migrate(data: any): any
 	return data
 end
 
--- Load (and lock) a player's data. Returns nil if another live server still
--- holds the lock, in which case we kick and ask them to rejoin.
-function DataService.load(player: Player): any?
+function DataService.load(player)
 	local userId = player.UserId
 
 	local data = retry(function()
 		return store:UpdateAsync(keyFor(userId), function(old)
 			old = old or deepCopy(TEMPLATE)
 			local lock = old.__lock
-			local lockAlive = lock and (os.time() - lock.time) < SESSION_TTL
-			if lockAlive and lock.jobId ~= jobId then
-				return nil -- someone else owns it; cancel the write
+			if lock and (os.time() - lock.time) < SESSION_TTL and lock.jobId ~= jobId then
+				return nil -- someone else still has it, dont touch
 			end
 			old.__lock = { jobId = jobId, time = os.time() }
 			return old
@@ -85,7 +76,7 @@ function DataService.load(player: Player): any?
 	end)
 
 	if not data then
-		player:Kick("Your data is still saving on another server. Please rejoin in a moment.")
+		player:Kick("Your data is still saving on another server, rejoin in a sec.")
 		return nil
 	end
 
@@ -94,14 +85,12 @@ function DataService.load(player: Player): any?
 	return data
 end
 
-function DataService.get(userId: number): any?
+function DataService.get(userId)
 	return cache[userId]
 end
 
--- Save the player's data. Pass release = true on leave to also drop the lock.
--- The write is skipped if we no longer own the lock, so a stale server can't
--- stomp fresh data on another server.
-function DataService.save(player: Player, release: boolean)
+-- pass release = true on leave so it drops the lock too
+function DataService.save(player, release)
 	local userId = player.UserId
 	local data = cache[userId]
 	if not data then
@@ -111,7 +100,7 @@ function DataService.save(player: Player, release: boolean)
 	retry(function()
 		store:UpdateAsync(keyFor(userId), function(old)
 			if old and old.__lock and old.__lock.jobId ~= jobId then
-				return nil -- we don't own the lock anymore, don't overwrite
+				return nil -- not ours anymore, dont stomp it
 			end
 			local toSave = deepCopy(data)
 			toSave.__lock = if release then nil else { jobId = jobId, time = os.time() }
@@ -128,7 +117,7 @@ Players.PlayerRemoving:Connect(function(player)
 	DataService.save(player, true)
 end)
 
--- Best-effort flush on shutdown so nobody loses the last couple minutes.
+-- flush everyone on shutdown so nobody loses the last couple minutes
 game:BindToClose(function()
 	for _, player in Players:GetPlayers() do
 		task.spawn(DataService.save, player, true)

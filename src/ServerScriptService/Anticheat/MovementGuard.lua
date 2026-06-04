@@ -1,29 +1,22 @@
---!strict
--- MovementGuard
--- Server-side speed / teleport / fly check. Measures how far each player
--- actually moved on the X/Z plane per step and compares it to what walkspeed
--- should allow. Falling and knockback don't trip it because the Y axis is
--- dropped. Flag-and-review: one spike is logged, repeat offenders rack up
--- strikes. Hook the strike count up to a kick / log store in a real game.
+-- server side speed check. measures how far you moved on x/z each step vs what
+-- walkspeed should let you. falling/knockback dont count cause i drop the y.
+-- builds up strikes instead of banning on one spike, bad ping happens
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local MovementGuard = {}
 
-local MAX_STUDS_PER_SEC = 24 -- walkspeed 16 + headroom for ping
-local SAMPLE = 0.5 -- seconds between checks
+local MAX_STUDS_PER_SEC = 24 -- 16 walkspeed + a bit of headroom for ping
+local SAMPLE = 0.5
 local STRIKES_TO_KICK = 6
 
-local last: { [Player]: Vector3 } = {}
-local strikes: { [Player]: number } = {}
+local last = {}
+local strikes = {}
 
-local function flag(player: Player, speed: number)
+local function flag(player, speed)
 	strikes[player] = (strikes[player] or 0) + 1
-	warn(string.format(
-		"[Anticheat] %s moving at %.1f studs/s (strike %d)",
-		player.Name, speed, strikes[player]
-	))
+	warn(string.format("[anticheat] %s moving %.1f studs/s (strike %d)", player.Name, speed, strikes[player]))
 	if strikes[player] >= STRIKES_TO_KICK then
 		player:Kick("Kicked by anticheat.")
 	end
@@ -42,7 +35,7 @@ function MovementGuard.start()
 
 		for _, player in Players:GetPlayers() do
 			local char = player.Character
-			local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local root = char and char:FindFirstChild("HumanoidRootPart")
 			if not root then
 				continue
 			end
@@ -50,7 +43,6 @@ function MovementGuard.start()
 			local now = root.Position
 			local prev = last[player]
 			if prev then
-				-- horizontal distance only
 				local moved = ((now - prev) * Vector3.new(1, 0, 1)).Magnitude
 				if moved / step > MAX_STUDS_PER_SEC then
 					flag(player, moved / step)

@@ -1,25 +1,19 @@
---!strict
--- RateLimiter
--- Token-bucket limiter for RemoteEvents. Each player holds `rate` tokens that
--- refill smoothly over `per` seconds. Every request costs one token; run dry
--- and the request is rejected. Smooths bursts without a hard per-frame cap,
--- which is what you want against remote-spam exploits.
+-- token bucket for remotes. each player gets `rate` tokens that refill over
+-- `per` seconds, every request eats one. run out and it gets rejected. good
+-- against remote spam without a harsh per-frame cap.
 
 local RateLimiter = {}
 RateLimiter.__index = RateLimiter
 
-type Bucket = { tokens: number, last: number }
-
-function RateLimiter.new(rate: number, per: number)
+function RateLimiter.new(rate, per)
 	return setmetatable({
 		rate = rate,
 		per = per,
-		buckets = {} :: { [Player]: Bucket },
+		buckets = {},
 	}, RateLimiter)
 end
 
--- Returns true and consumes a token if one is available, false otherwise.
-function RateLimiter:check(player: Player): boolean
+function RateLimiter:check(player)
 	local now = os.clock()
 	local b = self.buckets[player]
 	if not b then
@@ -27,7 +21,7 @@ function RateLimiter:check(player: Player): boolean
 		self.buckets[player] = b
 	end
 
-	-- refill based on how long it's been since we last looked
+	-- refill for however long its been since last check
 	local elapsed = now - b.last
 	b.tokens = math.min(self.rate, b.tokens + elapsed * (self.rate / self.per))
 	b.last = now
@@ -39,7 +33,7 @@ function RateLimiter:check(player: Player): boolean
 	return true
 end
 
-function RateLimiter:clear(player: Player)
+function RateLimiter:clear(player)
 	self.buckets[player] = nil
 end
 

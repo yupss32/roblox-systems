@@ -1,50 +1,31 @@
-# Roblox Systems — Code Sample
+# roblox-systems
 
-A small slice of how I build Roblox games: modular, server-authoritative, and
-written so the next person can actually read it.
+bit of my code so you can see how i write before working together. not a full game, just the systems i get asked for most — saving, coins, a shop, and anticheat. all server side, the client just asks.
 
-This isn't a full game. It's a focused sample of the systems I get asked for
-most — player data, currency, a shop, and anticheat — wired together the way
-I'd structure a real project. Everything important happens on the server; the
-client only ever asks.
-
-## What's in here
+## layout
 
 ```
 src/
   ServerScriptService/
-    init.server.lua          -- bootstrap: loads data on join, starts anticheat
+    init.server.lua        -- boot: load data on join, start anticheat
     Services/
-      DataService.lua        -- datastore wrapper: session lock, retry/backoff,
-                                autosave, guaranteed save on leave, migrations
-      CoinService.lua        -- server-authoritative currency
-      ShopService.lua        -- coin shop, prices live on the server only
+      DataService.lua      -- saving w/ session lock, retries, autosave, migrations
+      CoinService.lua      -- coins, server side only
+      ShopService.lua      -- coin shop, prices live on the server
     Anticheat/
-      MovementGuard.lua      -- server-side speed / teleport / fly check
-      RateLimiter.lua        -- token-bucket limiter for RemoteEvents
+      MovementGuard.lua    -- speed / teleport / fly check
+      RateLimiter.lua      -- token bucket for remotes
   ReplicatedStorage/
     Modules/
-      Cooldown.lua           -- small reusable cooldown
+      Cooldown.lua         -- reusable cooldown
 ```
 
-## A few things worth pointing out
+## stuff worth pointing out
 
-- **DataService uses a session lock.** A profile can't be loaded on two servers
-  at once, which is what stops the classic "join two servers and dupe" exploit.
-  Saves retry with backoff so a temporary DataStore outage doesn't cost anyone
-  their progress, and old saves get migrated forward instead of wiped.
-- **The shop never trusts the client.** Prices live in a catalog on the server.
-  The client sends an item id and nothing else; the server checks the price,
-  spends the coins, and grants the item. There's no client path to set a price
-  or grant yourself something for free.
-- **Anticheat is flag-and-review, not insta-ban.** MovementGuard measures real
-  horizontal speed server-side and racks up strikes instead of banning on one
-  spike, so players with bad ping don't get punished.
+- **DataService has a session lock** so the same profile cant load on two servers at once. thats the thing that stops the join-two-servers dupe. saves retry if datastore is being slow, and old saves get patched to the new template instead of wiped.
+- **shop prices live on the server only.** client sends an item id, server checks the price, spends the coins, grants the item. no way to fake a price or grab something free.
+- **anticheat builds strikes instead of insta banning.** one weird reading gets logged, repeat offenders get kicked. people with bad wifi dont get booted off one spike.
 
-## Notes
+this is my own showcase code, not from a client project. happy to walk through any of it or do a small paid test task.
 
-This is my own showcase code, not from a client project. It's here so you can
-see how I write and structure things before working together. Happy to walk
-through any of it or do a small paid test task.
-
-— Yeps32 · Discord: Yupss32 · Roblox: REALIFTERv4
+— yeps32 · discord: yupss32 · roblox: REALIFTERv4

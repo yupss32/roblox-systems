@@ -1,8 +1,6 @@
---!strict
--- Server bootstrap.
--- Loads (and locks) data when a player joins, sets up their leaderstats from
--- the saved value, and starts the anticheat + shop. Keeping the wiring in one
--- place makes the boot order obvious instead of scattered across scripts.
+-- server boot. loads data on join, makes leaderstats from the saved coins,
+-- starts anticheat + the shop. keeping the wiring in one spot so the boot
+-- order is obvious
 
 local Players = game:GetService("Players")
 
@@ -13,7 +11,7 @@ local DataService = require(Services.DataService)
 local ShopService = require(Services.ShopService)
 local MovementGuard = require(Anticheat.MovementGuard)
 
-local function setupLeaderstats(player: Player, coins: number)
+local function setupLeaderstats(player, coins)
 	local ls = Instance.new("Folder")
 	ls.Name = "leaderstats"
 
@@ -28,7 +26,7 @@ end
 Players.PlayerAdded:Connect(function(player)
 	local data = DataService.load(player)
 	if not data then
-		return -- load() already kicked them on a lock conflict
+		return -- load already kicked them
 	end
 	setupLeaderstats(player, data.Coins)
 end)
